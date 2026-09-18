@@ -18,27 +18,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Convert logo.jpeg to proper .ico
-        shell: python
-        run: |
-          from PIL import Image
-          import os
-          img = Image.open("public/logo.jpeg").convert("RGBA")
-          # Tailles standard requises pour un .ico Windows
-          sizes = [(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)]
-          imgs = [img.resize(s, Image.LANCZOS) for s in sizes]
-          imgs[0].save(
-            "public/logo.ico",
-            format="ICO",
-            sizes=[(s,s) for s in [16,32,48,64,128,256]]
-          )
-          print("ICO generated:", os.path.getsize("public/logo.ico"), "bytes")
-
       - name: Install dependencies
         run: npm install
 
@@ -49,8 +28,6 @@ jobs:
 
       - name: Build Windows .exe
         run: npx electron-builder --win --x64 --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload .exe
         uses: actions/upload-artifact@v4
