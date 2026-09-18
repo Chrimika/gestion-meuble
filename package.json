@@ -19,7 +19,7 @@
     "appId": "com.saintraphael.gestion",
     "productName": "Résidence St Raphaël",
     "copyright": "Copyright © 2026 Résidence St Raphaël",
-    "icon": "public/logo.jpeg",
+    "icon": "public/logo.png",
     "directories": {
       "output": "dist-electron"
     },
@@ -44,21 +44,21 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/logo.jpeg",
-      "uninstallerIcon": "public/logo.jpeg",
-      "installerHeaderIcon": "public/logo.jpeg",
+      "installerIcon": "public/logo.png",
+      "uninstallerIcon": "public/logo.png",
+      "installerHeaderIcon": "public/logo.png",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Résidence St Raphaël"
     },
     "linux": {
       "target": ["AppImage", "deb"],
-      "icon": "public/logo.jpeg",
+      "icon": "public/logo.png",
       "category": "Office"
     },
     "mac": {
       "target": ["dmg"],
-      "icon": "public/logo.jpeg",
+      "icon": "public/logo.png",
       "category": "public.app-category.business"
     }
   },

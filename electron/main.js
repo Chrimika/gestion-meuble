@@ -44,7 +44,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 680,
     title: "Résidence St Raphaël — Gestion",
-    icon: path.join(__dirname, "../public/logo.jpeg"),
+    icon: path.join(__dirname, "../public/logo.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
