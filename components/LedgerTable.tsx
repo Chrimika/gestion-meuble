@@ -1,18 +1,18 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Transaction, PropertyUnit, Category } from "@/types/finance";
+import { Transaction, PropertyUnit } from "@/types/finance";
 import { formatCurrency, formatDateDisplay } from "@/lib/storage";
-import { 
-  Search, 
-  Filter, 
-  PlusCircle, 
-  Trash2, 
-  Edit3, 
-  LayoutList,
-  Grid,
+import {
+  Search,
+  Filter,
+  PlusCircle,
+  Trash2,
+  Edit3,
   X,
-  FileSpreadsheet
+  Eye,
+  Printer,
+  ChevronRight,
 } from "lucide-react";
 
 interface LedgerTableProps {
@@ -22,6 +22,8 @@ interface LedgerTableProps {
   onEditTransaction: (tx: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
   onCompleteInstallment?: (tx: Transaction) => void;
+  onViewDetail?: (tx: Transaction) => void;
+  onPrintReceipt?: (tx: Transaction) => void;
   categories?: any[];
 }
 
@@ -32,6 +34,8 @@ export const LedgerTable: React.FC<LedgerTableProps> = ({
   onEditTransaction,
   onDeleteTransaction,
   onCompleteInstallment,
+  onViewDetail,
+  onPrintReceipt,
   categories = [],
 }) => {
   const isDark = theme === "dark";
@@ -39,484 +43,350 @@ export const LedgerTable: React.FC<LedgerTableProps> = ({
   const [selectedUnit, setSelectedUnit] = useState<string>("ALL");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<"ALL" | "RECETTE" | "DEPENSE">("ALL");
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 
   const categoryOptions: string[] = useMemo(() => {
-    const defaultCats = [
-      "Loyers & Réservations",
-      "Entretien & Travaux",
-      "Fournitures & Linge",
-      "Salaires & Personnel",
-      "Charges & Énergie",
-      "Transport & Com",
-      "Autres",
+    const defaults = [
+      "Loyers & Réservations","Entretien & Travaux","Fournitures & Linge",
+      "Salaires & Personnel","Charges & Énergie","Transport & Com","Autres",
     ];
-    if (categories && categories.length > 0) {
-      return categories.map((c) => c.name);
-    }
+    if (categories.length > 0) return categories.map((c) => c.name);
     const fromTx = Array.from(new Set(transactions.map((t) => t.category).filter(Boolean)));
-    return Array.from(new Set([...defaultCats, ...fromTx]));
+    return Array.from(new Set([...defaults, ...fromTx]));
   }, [categories, transactions]);
 
-  // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
-        tx.libelle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tx.pieceNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tx.date.includes(searchQuery);
-
+        tx.libelle.toLowerCase().includes(q) ||
+        tx.pieceNo.toLowerCase().includes(q) ||
+        tx.date.includes(q) ||
+        (tx.clientName || "").toLowerCase().includes(q) ||
+        (tx.clientCni || "").toLowerCase().includes(q);
       const matchesUnit = selectedUnit === "ALL" || tx.unit === selectedUnit;
-      const matchesCategory = selectedCategory === "ALL" || tx.category === selectedCategory;
-
-      let matchesType = true;
-      if (typeFilter === "RECETTE") matchesType = (tx.recettes || 0) > 0;
-      if (typeFilter === "DEPENSE") matchesType = (tx.depenses || 0) > 0;
-
-      return matchesSearch && matchesUnit && matchesCategory && matchesType;
+      const matchesCat = selectedCategory === "ALL" || tx.category === selectedCategory;
+      const matchesType =
+        typeFilter === "ALL" ? true :
+        typeFilter === "RECETTE" ? (tx.recettes || 0) > 0 :
+        (tx.depenses || 0) > 0;
+      return matchesSearch && matchesUnit && matchesCat && matchesType;
     });
   }, [transactions, searchQuery, selectedUnit, selectedCategory, typeFilter]);
 
-  // Totals for filtered data
-  const filteredTotalRecettes = useMemo(
-    () => filteredTransactions.reduce((sum, t) => sum + (t.recettes || 0), 0),
-    [filteredTransactions]
-  );
-
-  const filteredTotalDepenses = useMemo(
-    () => filteredTransactions.reduce((sum, t) => sum + (t.depenses || 0), 0),
-    [filteredTransactions]
-  );
+  const totRec = useMemo(() => filteredTransactions.reduce((s, t) => s + (t.recettes || 0), 0), [filteredTransactions]);
+  const totDep = useMemo(() => filteredTransactions.reduce((s, t) => s + (t.depenses || 0), 0), [filteredTransactions]);
 
   const unitOptions: PropertyUnit[] = [
-    "Appartement 1",
-    "Appartement 2",
-    "Appartement 3",
-    "Appartement 4",
-    "Salle de Conférence",
-    "Général / Communs",
+    "Appartement 1","Appartement 2","Appartement 3","Appartement 4",
+    "Salle de Conférence","Général / Communs",
   ];
 
-  const getUnitBadge = (u: PropertyUnit) => {
-    if (isDark) {
-      switch (u) {
-        case "Appartement 1": return "bg-blue-500/10 text-blue-300 border-blue-500/30";
-        case "Appartement 2": return "bg-cyan-500/10 text-cyan-300 border-cyan-500/30";
-        case "Appartement 3": return "bg-purple-500/10 text-purple-300 border-purple-500/30";
-        case "Appartement 4": return "bg-amber-500/10 text-amber-300 border-amber-500/30";
-        case "Salle de Conférence": return "bg-indigo-500/10 text-indigo-300 border-indigo-500/30";
-        default: return "bg-slate-800 text-slate-400 border-slate-700/60";
-      }
-    } else {
-      switch (u) {
-        case "Appartement 1": return "bg-blue-50 text-blue-700 border-blue-200";
-        case "Appartement 2": return "bg-cyan-50 text-cyan-700 border-cyan-200";
-        case "Appartement 3": return "bg-purple-50 text-purple-700 border-purple-200";
-        case "Appartement 4": return "bg-amber-50 text-amber-800 border-amber-200";
-        case "Salle de Conférence": return "bg-indigo-50 text-indigo-700 border-indigo-200";
-        default: return "bg-slate-100 text-slate-600 border-slate-200";
-      }
-    }
+  const unitColor: Record<string, string> = {
+    "Appartement 1": isDark ? "bg-blue-900/50 text-blue-300 border-blue-700/50" : "bg-blue-50 text-blue-700 border-blue-200",
+    "Appartement 2": isDark ? "bg-cyan-900/50 text-cyan-300 border-cyan-700/50" : "bg-cyan-50 text-cyan-700 border-cyan-200",
+    "Appartement 3": isDark ? "bg-purple-900/50 text-purple-300 border-purple-700/50" : "bg-purple-50 text-purple-700 border-purple-200",
+    "Appartement 4": isDark ? "bg-amber-900/50 text-amber-300 border-amber-700/50" : "bg-amber-50 text-amber-800 border-amber-200",
+    "Salle de Conférence": isDark ? "bg-indigo-900/50 text-indigo-300 border-indigo-700/50" : "bg-indigo-50 text-indigo-700 border-indigo-200",
+    "Général / Communs": isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200",
   };
 
+  const hasFilters = selectedUnit !== "ALL" || selectedCategory !== "ALL" || typeFilter !== "ALL" || searchQuery;
+
+  const base = isDark
+    ? "bg-slate-900 border-slate-800 text-slate-200"
+    : "bg-white border-slate-200 text-slate-800";
+
   return (
-    <div className="space-y-4">
-      
-      {/* Search & Filters Bar */}
-      <div
-        className={`border rounded-2xl p-4 shadow-sm transition-colors space-y-3 ${
-          isDark
-            ? "bg-slate-900/90 border-slate-800"
-            : "bg-white border-slate-200"
-        }`}
-      >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          
-          {/* Search Input */}
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${isDark ? "text-slate-400" : "text-slate-400"}`} />
-            <input
-              type="text"
-              placeholder="Rechercher libellé, n° pièce (ex: 007*)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full pl-10 pr-8 py-2 border rounded-xl text-xs sm:text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/50 ${
-                isDark
-                  ? "bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500"
-                  : "bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400"
-              }`}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+    /* Outer container fills remaining height, flex column, no overflow */
+    <div className="flex flex-col h-full gap-0">
 
-          {/* Right Action buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            
-            {/* View Mode Switcher */}
-            <div className={`flex p-1 rounded-xl border ${isDark ? "bg-slate-950 border-slate-800" : "bg-slate-100 border-slate-200"}`}>
-              <button
-                onClick={() => setViewMode("table")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  viewMode === "table"
-                    ? isDark ? "bg-slate-800 text-amber-400 shadow-sm" : "bg-white text-amber-600 shadow-sm"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-                title="Vue Tableau Compact"
-              >
-                <LayoutList className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Tableau</span>
-              </button>
-              <button
-                onClick={() => setViewMode("cards")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  viewMode === "cards"
-                    ? isDark ? "bg-slate-800 text-amber-400 shadow-sm" : "bg-white text-amber-600 shadow-sm"
-                    : "text-slate-500 hover:text-slate-900"
-                }`}
-                title="Vue Fiches"
-              >
-                <Grid className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Fiches</span>
-              </button>
-            </div>
+      {/* ── Filter Bar (fixed height) ── */}
+      <div className={`no-print shrink-0 border-b px-4 py-3 flex flex-wrap items-center gap-2 ${
+        isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200"
+      }`}>
 
-            <button
-              onClick={onOpenNewTransaction}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center gap-1.5"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Saisir Opération</span>
-            </button>
-          </div>
-
-        </div>
-
-        {/* Filter Toolbar */}
-        <div className={`flex flex-wrap items-center gap-2 pt-2 border-t text-xs ${isDark ? "border-slate-800" : "border-slate-100"}`}>
-          <span className={`font-medium flex items-center gap-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-            <Filter className="w-3.5 h-3.5 text-amber-500" />
-            Filtres :
-          </span>
-
-          <select
-            value={selectedUnit}
-            onChange={(e) => setSelectedUnit(e.target.value)}
-            className={`border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none ${
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Rechercher libellé, n° pièce, client…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={`w-full pl-9 pr-7 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-colors ${
               isDark
-                ? "bg-slate-950 border-slate-800 text-slate-200"
-                : "bg-slate-50 border-slate-200 text-slate-800"
+                ? "bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-500"
+                : "bg-white border-slate-300 text-slate-900 placeholder-slate-400"
             }`}
-          >
-            <option value="ALL">Toutes les Unités</option>
-            {unitOptions.map((u) => (
-              <option key={u} value={u}>{u}</option>
-            ))}
-          </select>
-
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className={`border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none ${
-              isDark
-                ? "bg-slate-950 border-slate-800 text-slate-200"
-                : "bg-slate-50 border-slate-200 text-slate-800"
-            }`}
-          >
-            <option value="ALL">Toutes les Catégories</option>
-            {categoryOptions.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-
-          <div className={`flex p-0.5 rounded-lg border ${isDark ? "bg-slate-950 border-slate-800" : "bg-slate-100 border-slate-200"}`}>
-            <button
-              onClick={() => setTypeFilter("ALL")}
-              className={`px-2.5 py-1 rounded text-xs transition-colors ${
-                typeFilter === "ALL"
-                  ? isDark ? "bg-slate-800 text-white font-bold" : "bg-white text-slate-900 font-bold shadow-xs"
-                  : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Tous
-            </button>
-            <button
-              onClick={() => setTypeFilter("RECETTE")}
-              className={`px-2.5 py-1 rounded text-xs transition-colors ${
-                typeFilter === "RECETTE"
-                  ? "bg-emerald-600 text-white font-bold"
-                  : "text-slate-500 hover:text-emerald-600"
-              }`}
-            >
-              Recettes
-            </button>
-            <button
-              onClick={() => setTypeFilter("DEPENSE")}
-              className={`px-2.5 py-1 rounded text-xs transition-colors ${
-                typeFilter === "DEPENSE"
-                  ? "bg-rose-600 text-white font-bold"
-                  : "text-slate-500 hover:text-rose-600"
-              }`}
-            >
-              Dépenses
-            </button>
-          </div>
-
-          {(selectedUnit !== "ALL" || selectedCategory !== "ALL" || typeFilter !== "ALL" || searchQuery) && (
-            <button
-              onClick={() => {
-                setSelectedUnit("ALL");
-                setSelectedCategory("ALL");
-                setTypeFilter("ALL");
-                setSearchQuery("");
-              }}
-              className="text-amber-600 dark:text-amber-400 hover:underline text-xs ml-auto font-medium"
-            >
-              Réinitialiser
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X className="w-3 h-3" />
             </button>
           )}
         </div>
 
+        {/* Unit filter */}
+        <select
+          value={selectedUnit}
+          onChange={(e) => setSelectedUnit(e.target.value)}
+          className={`border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none ${
+            isDark ? "bg-slate-900 border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
+          }`}
+        >
+          <option value="ALL">Toutes les unités</option>
+          {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+        </select>
+
+        {/* Category filter */}
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className={`border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none ${
+            isDark ? "bg-slate-900 border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
+          }`}
+        >
+          <option value="ALL">Toutes les catégories</option>
+          {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        {/* Type toggle */}
+        <div className={`flex rounded-lg border overflow-hidden text-xs ${
+          isDark ? "border-slate-700" : "border-slate-300"
+        }`}>
+          {(["ALL", "RECETTE", "DEPENSE"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              className={`px-3 py-1.5 font-semibold transition-colors ${
+                typeFilter === t
+                  ? t === "RECETTE" ? "bg-emerald-600 text-white"
+                    : t === "DEPENSE" ? "bg-rose-600 text-white"
+                    : isDark ? "bg-slate-700 text-white" : "bg-slate-800 text-white"
+                  : isDark ? "bg-slate-900 text-slate-400 hover:text-slate-200" : "bg-white text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {t === "ALL" ? "Tous" : t === "RECETTE" ? "Recettes" : "Dépenses"}
+            </button>
+          ))}
+        </div>
+
+        {hasFilters && (
+          <button
+            onClick={() => { setSelectedUnit("ALL"); setSelectedCategory("ALL"); setTypeFilter("ALL"); setSearchQuery(""); }}
+            className="text-amber-500 hover:text-amber-400 text-xs font-semibold flex items-center gap-1"
+          >
+            <X className="w-3 h-3" /> Effacer
+          </button>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Counts */}
+        <span className={`text-xs font-medium ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+          {filteredTransactions.length} / {transactions.length} lignes
+        </span>
+
+        {/* New operation */}
+        <button
+          onClick={onOpenNewTransaction}
+          className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow transition-all"
+        >
+          <PlusCircle className="w-3.5 h-3.5" />
+          Saisir Opération
+        </button>
       </div>
 
-      {/* Main Ledger Content */}
-      {viewMode === "table" ? (
-        
-        /* TABLEAU COMPACT (NO HORIZONTAL OVERFLOW) */
-        <div className={`border rounded-2xl shadow-sm overflow-hidden transition-colors ${
-          isDark ? "bg-slate-900/90 border-slate-800" : "bg-white border-slate-200"
-        }`}>
-          <table className="w-full text-left text-xs sm:text-sm border-collapse table-fixed">
-            
-            <thead>
-              <tr className={`uppercase text-[10px] font-bold tracking-wider border-b ${
-                isDark ? "bg-slate-950 text-slate-400 border-slate-800" : "bg-slate-50 text-slate-500 border-slate-200"
-              }`}>
-                <th className="py-3 px-2 sm:px-3 w-[75px] sm:w-[90px] font-mono">Date</th>
-                <th className="py-3 px-2 w-[60px] sm:w-[70px] font-mono text-center">N°</th>
-                <th className="py-3 px-3 min-w-[180px]">Libellé & Unité</th>
-                <th className="py-3 px-2 sm:px-3 w-[95px] sm:w-[125px] text-right text-emerald-600 dark:text-emerald-400 font-mono">Recette</th>
-                <th className="py-3 px-2 sm:px-3 w-[95px] sm:w-[125px] text-right text-rose-600 dark:text-rose-400 font-mono">Dépense</th>
-                <th className="py-3 px-2 sm:px-3 w-[110px] sm:w-[135px] text-right text-amber-600 dark:text-amber-300 font-mono">Solde</th>
-                <th className="py-3 px-1.5 w-[45px] sm:w-[60px] text-center"></th>
-              </tr>
-            </thead>
+      {/* ── Table (scrolls independently) ── */}
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
+        <table className={`w-full text-left text-xs border-collapse min-w-[760px] ${isDark ? "bg-slate-900" : "bg-white"}`}>
 
-            <tbody className={`divide-y ${isDark ? "divide-slate-800/50" : "divide-slate-100"}`}>
-              {filteredTransactions.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    Aucune ligne trouvée.
-                  </td>
-                </tr>
-              ) : (
-                filteredTransactions.map((tx) => {
-                  const isRecette = (tx.recettes || 0) > 0;
-                  const isDepense = (tx.depenses || 0) > 0;
-                  const soldeVal = tx.solde ?? 0;
+          <thead className={`sticky top-0 z-10 text-[10px] uppercase tracking-wider font-bold ${
+            isDark ? "bg-slate-950 text-slate-400 border-b border-slate-800"
+                   : "bg-slate-100 text-slate-500 border-b border-slate-200"
+          }`}>
+            <tr>
+              <th className="py-2.5 px-3 w-[88px]">Date</th>
+              <th className="py-2.5 px-2 w-[60px] text-center">N°</th>
+              <th className="py-2.5 px-3">Libellé / Unité</th>
+              <th className="py-2.5 px-3 w-[110px] text-right text-emerald-500">Recette</th>
+              <th className="py-2.5 px-3 w-[110px] text-right text-rose-500">Dépense</th>
+              <th className="py-2.5 px-3 w-[120px] text-right text-amber-500">Solde</th>
+              <th className="py-2.5 px-2 w-[100px] text-center">Actions</th>
+            </tr>
+          </thead>
 
-                  return (
-                    <tr
-                      key={tx.id}
-                      className={`transition-colors ${
-                        isDark ? "hover:bg-slate-800/50 text-slate-200" : "hover:bg-slate-50 text-slate-800"
-                      }`}
-                    >
-                      {/* Date */}
-                      <td className={`py-2.5 px-2 sm:px-3 font-mono text-[11px] sm:text-xs ${isDark ? "text-slate-300" : "text-slate-600"}`}>
-                        {formatDateDisplay(tx.date)}
-                      </td>
-
-                      {/* Piece No */}
-                      <td className="py-2.5 px-2 font-mono text-center text-[10px] sm:text-xs">
-                        <span className={`px-1.5 py-0.5 rounded border ${
-                          isDark ? "bg-slate-950 text-slate-400 border-slate-800" : "bg-slate-100 text-slate-600 border-slate-200"
-                        }`}>
-                          {tx.pieceNo || "-"}
-                        </span>
-                      </td>
-
-                      {/* Libelle + Sub-badges */}
-                      <td className="py-2.5 px-3">
-                        <div className={`font-semibold leading-snug text-xs sm:text-sm ${isDark ? "text-slate-100" : "text-slate-900"}`}>
-                          {tx.libelle}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                          <span className={`text-[10px] px-2 py-0.2 rounded-md font-medium border ${getUnitBadge(tx.unit)}`}>
-                            {tx.unit}
-                          </span>
-                          <span className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            • {tx.category}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Recette */}
-                      <td className="py-2.5 px-2 sm:px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm tabular-nums">
-                        {isRecette ? formatCurrency(tx.recettes) : ""}
-                      </td>
-
-                      {/* Depense */}
-                      <td className="py-2.5 px-2 sm:px-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400 text-xs sm:text-sm tabular-nums">
-                        {isDepense ? formatCurrency(tx.depenses) : ""}
-                      </td>
-
-                      {/* Solde */}
-                      <td className="py-2.5 px-2 sm:px-3 text-right font-mono font-extrabold text-xs sm:text-sm tabular-nums">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-lg border ${
-                            soldeVal >= 0
-                              ? isDark ? "text-emerald-300 bg-emerald-950/50 border-emerald-800/40" : "text-emerald-800 bg-emerald-50 border-emerald-200"
-                              : isDark ? "text-rose-300 bg-rose-950/50 border-rose-800/40" : "text-rose-800 bg-rose-50 border-rose-200"
-                          }`}
-                        >
-                          {formatCurrency(soldeVal)}
-                        </span>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {(tx.libelle?.includes("TRANCHE") || tx.libelle?.includes("RESTE DÛ:") || tx.libelle?.includes("AVANCE")) && onCompleteInstallment && (
-                            <button
-                              onClick={() => onCompleteInstallment(tx)}
-                              className="px-2 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 shadow-sm"
-                              title="Payer / Compléter la tranche suivante pour cette réservation"
-                            >
-                              <PlusCircle className="w-3 h-3" />
-                              <span>Tranche</span>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => onEditTransaction(tx)}
-                            className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 rounded transition-colors"
-                            title="Modifier"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => onDeleteTransaction(tx.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded transition-colors"
-                            title="Supprimer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-
-            {/* Totals Footer */}
-            <tfoot className={`border-t-2 text-xs font-bold ${
-              isDark ? "bg-slate-950 border-slate-800 text-slate-200" : "bg-slate-50 border-slate-200 text-slate-800"
-            }`}>
+          <tbody className={`divide-y ${isDark ? "divide-slate-800/60" : "divide-slate-100"}`}>
+            {filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan={3} className="py-3 px-3 uppercase tracking-wider text-[11px] text-slate-500">
-                  Totaux ({filteredTransactions.length} opérations)
+                <td colSpan={7} className={`py-16 text-center ${isDark ? "text-slate-600" : "text-slate-400"}`}>
+                  <Filter className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <div className="text-sm font-medium">Aucune ligne trouvée</div>
+                  {hasFilters && <div className="text-xs mt-1 opacity-70">Essayez de modifier les filtres</div>}
                 </td>
-                <td className="py-3 px-2 sm:px-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm tabular-nums">
-                  {formatCurrency(filteredTotalRecettes)}
-                </td>
-                <td className="py-3 px-2 sm:px-3 text-right font-mono font-black text-rose-600 dark:text-rose-400 text-xs sm:text-sm tabular-nums">
-                  {formatCurrency(filteredTotalDepenses)}
-                </td>
-                <td className="py-3 px-2 sm:px-3 text-right font-mono font-black text-amber-600 dark:text-amber-300 text-xs sm:text-sm tabular-nums">
-                  {formatCurrency(filteredTotalRecettes - filteredTotalDepenses)}
-                </td>
-                <td></td>
               </tr>
-            </tfoot>
+            ) : (
+              filteredTransactions.map((tx, idx) => {
+                const isRec = (tx.recettes || 0) > 0;
+                const isDep = (tx.depenses || 0) > 0;
+                const soldeVal = tx.solde ?? 0;
+                const isReservation = tx.category === "Loyers & Réservations" || (tx.clientCni && tx.clientCni.length > 0);
+                const hasTranche = tx.libelle?.includes("TRANCHE") || tx.libelle?.includes("RESTE DÛ") || tx.libelle?.includes("AVANCE");
 
-          </table>
+                return (
+                  <tr
+                    key={tx.id}
+                    onClick={() => onViewDetail && onViewDetail(tx)}
+                    className={`group transition-colors ${onViewDetail ? "cursor-pointer" : ""} ${
+                      isDark ? "hover:bg-slate-800/50 text-slate-200" : "hover:bg-amber-50/40 text-slate-800"
+                    } ${isReservation && isRec ? isDark ? "border-l-2 border-l-amber-600/50" : "border-l-2 border-l-amber-400" : ""}`}
+                  >
+                    {/* Date */}
+                    <td className={`py-2.5 px-3 font-mono text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                      {formatDateDisplay(tx.date)}
+                    </td>
+
+                    {/* N° pièce */}
+                    <td className="py-2.5 px-2 text-center">
+                      <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded border font-mono ${
+                        isDark ? "bg-slate-800 text-slate-500 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}>
+                        {tx.pieceNo || "—"}
+                      </span>
+                    </td>
+
+                    {/* Libellé + badges */}
+                    <td className="py-2.5 px-3 max-w-[320px]">
+                      <div className={`font-semibold text-xs leading-snug truncate ${isDark ? "text-slate-100" : "text-slate-900"}`}>
+                        {tx.libelle}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${unitColor[tx.unit] || (isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200")}`}>
+                          {tx.unit}
+                        </span>
+                        <span className={`text-[10px] ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                          {tx.category}
+                        </span>
+                        {tx.clientName && (
+                          <span className={`text-[10px] font-medium ${isDark ? "text-amber-400/80" : "text-amber-700"}`}>
+                            · {tx.clientName}
+                          </span>
+                        )}
+                        {tx.resNights && tx.resNights > 0 ? (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isDark ? "bg-indigo-900/40 text-indigo-300 border-indigo-700/40" : "bg-indigo-50 text-indigo-600 border-indigo-200"}`}>
+                            {tx.resNights} nuit{tx.resNights > 1 ? "s" : ""}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+
+                    {/* Recette */}
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {isRec ? formatCurrency(tx.recettes) : <span className="text-slate-300 dark:text-slate-700">—</span>}
+                    </td>
+
+                    {/* Dépense */}
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                      {isDep ? formatCurrency(tx.depenses) : <span className="text-slate-300 dark:text-slate-700">—</span>}
+                    </td>
+
+                    {/* Solde */}
+                    <td className="py-2.5 px-3 text-right">
+                      <span className={`inline-block font-mono font-extrabold text-xs px-2 py-0.5 rounded-lg border tabular-nums ${
+                        soldeVal >= 0
+                          ? isDark ? "text-emerald-300 bg-emerald-950/60 border-emerald-800/40" : "text-emerald-800 bg-emerald-50 border-emerald-200"
+                          : isDark ? "text-rose-300 bg-rose-950/60 border-rose-800/40" : "text-rose-800 bg-rose-50 border-rose-200"
+                      }`}>
+                        {formatCurrency(soldeVal)}
+                      </span>
+                    </td>
+
+                    {/* Actions — toujours visibles, stopPropagation pour ne pas déclencher le détail */}
+                    <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-0.5">
+                        {/* Tranche */}
+                        {hasTranche && onCompleteInstallment && (
+                          <button
+                            onClick={() => onCompleteInstallment(tx)}
+                            className="px-1.5 py-1 rounded-lg text-[9px] font-black transition-all bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30"
+                            title="Tranche suivante"
+                          >
+                            +T
+                          </button>
+                        )}
+
+                        {/* Print */}
+                        {onPrintReceipt && (
+                          <button
+                            onClick={() => onPrintReceipt(tx)}
+                            className={`p-1.5 rounded-lg transition-all ${
+                              isDark
+                                ? "text-slate-500 hover:text-emerald-400 hover:bg-emerald-900/30"
+                                : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+                            }`}
+                            title="Imprimer le reçu"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Edit */}
+                        <button
+                          onClick={() => onEditTransaction(tx)}
+                          className={`p-1.5 rounded-lg transition-all ${
+                            isDark
+                              ? "text-slate-500 hover:text-amber-400 hover:bg-amber-900/30"
+                              : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                          }`}
+                          title="Modifier"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Delete */}
+                        <button
+                          onClick={() => onDeleteTransaction(tx.id)}
+                          className={`p-1.5 rounded-lg transition-all ${
+                            isDark
+                              ? "text-slate-500 hover:text-rose-400 hover:bg-rose-900/30"
+                              : "text-slate-400 hover:text-rose-500 hover:bg-rose-50"
+                          }`}
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Footer totals (fixed) ── */}
+      <div className={`no-print shrink-0 border-t px-4 py-2 flex items-center justify-between text-xs font-bold ${
+        isDark ? "bg-slate-950 border-slate-800 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"
+      }`}>
+        <span>{filteredTransactions.length} opération{filteredTransactions.length !== 1 ? "s" : ""} affichée{filteredTransactions.length !== 1 ? "s" : ""}</span>
+        <div className="flex items-center gap-4 font-mono">
+          <span>
+            <span className={isDark ? "text-slate-500" : "text-slate-400"}>Total Recettes : </span>
+            <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(totRec)}</span>
+          </span>
+          <span>
+            <span className={isDark ? "text-slate-500" : "text-slate-400"}>Total Dépenses : </span>
+            <span className="text-rose-600 dark:text-rose-400">{formatCurrency(totDep)}</span>
+          </span>
+          <span>
+            <span className={isDark ? "text-slate-500" : "text-slate-400"}>Solde filtré : </span>
+            <span className={totRec - totDep >= 0 ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}>
+              {formatCurrency(totRec - totDep)}
+            </span>
+          </span>
         </div>
-
-      ) : (
-
-        /* CARD GRID VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTransactions.map((tx) => {
-            const isRecette = (tx.recettes || 0) > 0;
-            const soldeVal = tx.solde ?? 0;
-
-            return (
-              <div
-                key={tx.id}
-                className={`border rounded-2xl p-4 space-y-3 shadow-sm transition-all flex flex-col justify-between ${
-                  isDark ? "bg-slate-900/90 border-slate-800" : "bg-white border-slate-200"
-                }`}
-              >
-                <div>
-                  <div className={`flex items-center justify-between text-xs border-b pb-2 mb-2 ${
-                    isDark ? "text-slate-400 border-slate-800" : "text-slate-500 border-slate-100"
-                  }`}>
-                    <span className="font-mono">{formatDateDisplay(tx.date)}</span>
-                    <span className={`font-mono px-2 py-0.5 rounded border ${
-                      isDark ? "bg-slate-950 border-slate-800 text-slate-300" : "bg-slate-50 border-slate-200 text-slate-700"
-                    }`}>
-                      N° {tx.pieceNo || "-"}
-                    </span>
-                  </div>
-
-                  <h4 className={`font-bold text-sm leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>{tx.libelle}</h4>
-
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${getUnitBadge(tx.unit)}`}>
-                      {tx.unit}
-                    </span>
-                    <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>{tx.category}</span>
-                  </div>
-
-                  {(tx.libelle?.includes("TRANCHE") || tx.libelle?.includes("RESTE DÛ:") || tx.libelle?.includes("AVANCE")) && onCompleteInstallment && (
-                    <div className="mt-3">
-                      <button
-                        onClick={() => onCompleteInstallment(tx)}
-                        className="w-full py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                      >
-                        <PlusCircle className="w-3.5 h-3.5" />
-                        <span>Régler la tranche suivante</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className={`pt-3 border-t flex items-center justify-between text-xs font-mono ${
-                  isDark ? "border-slate-800" : "border-slate-100"
-                }`}>
-                  <div>
-                    {isRecette ? (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-sm">+ {formatCurrency(tx.recettes)}</span>
-                    ) : (
-                      <span className="text-rose-600 dark:text-rose-400 font-bold text-sm">- {formatCurrency(tx.depenses)}</span>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 block font-sans">Solde Cumulé</span>
-                    <span className={`font-bold ${
-                      soldeVal >= 0
-                        ? isDark ? "text-emerald-300" : "text-emerald-700"
-                        : isDark ? "text-rose-300" : "text-rose-700"
-                    }`}>
-                      {formatCurrency(soldeVal)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-      )}
-
+      </div>
     </div>
   );
 };

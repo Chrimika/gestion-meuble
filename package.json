@@ -1,12 +1,66 @@
 {
-  "name": "gestion-meuble",
-  "version": "0.1.0",
+  "name": "residence-st-raphael",
+  "version": "1.0.0",
+  "description": "Logiciel de gestion financière — Résidence St Raphaël, Yaoundé",
+  "author": "Résidence St Raphaël <raphaelhome1929@gmail.com>",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:dev": "concurrently \"next dev -p 3421\" \"wait-on http://localhost:3421 && electron .\"",
+    "electron:build": "next build && electron-builder --win --x64",
+    "electron:build:linux": "next build && electron-builder --linux",
+    "electron:build:mac": "next build && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.saintraphael.gestion",
+    "productName": "Résidence St Raphaël",
+    "copyright": "Copyright © 2026 Résidence St Raphaël",
+    "icon": "public/logo.jpeg",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      ".next/**/*",
+      "public/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "next.config.ts"
+    ],
+    "extraResources": [],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "public/logo.jpeg"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "public/logo.jpeg",
+      "uninstallerIcon": "public/logo.jpeg",
+      "installerHeaderIcon": "public/logo.jpeg",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Résidence St Raphaël"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "public/logo.jpeg",
+      "category": "Office"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "public/logo.jpeg",
+      "category": "public.app-category.business"
+    }
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -21,9 +75,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.0.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^8.0.0"
   }
 }

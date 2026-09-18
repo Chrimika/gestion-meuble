@@ -15,6 +15,13 @@ export interface CategoryItem {
   createdAt?: string;
 }
 
+export interface ReservationService {
+  id: string;        // uuid local
+  label: string;     // Ex: "Lessive", "Repas soir"
+  qty: number;       // quantité
+  unitPrice: number; // prix unitaire en FCFA
+}
+
 export interface Transaction {
   id: string;
   date: string; // YYYY-MM-DD
@@ -26,6 +33,15 @@ export interface Transaction {
   depenses: number;
   solde?: number; // Calculated dynamically
   notes?: string;
+  // Reservation extras
+  clientCni?: string;
+  clientName?: string;
+  resStartDate?: string;
+  resEndDate?: string;
+  resNights?: number;
+  resTotalContract?: number;
+  resTrancheType?: string;
+  resServices?: ReservationService[]; // services additionnels
 }
 
 export interface UnitSummary {
@@ -54,8 +70,9 @@ export interface SummaryKPI {
 export interface InstallmentPreFill {
   unit: PropertyUnit;
   client: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  clientCni?: string;
+  startDate: string;
+  endDate: string;
   paymentType: "TRANCHE";
   trancheType: string;
   totalContract: string;

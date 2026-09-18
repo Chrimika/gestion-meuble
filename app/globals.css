@@ -1,8 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
+  --background: #f1f5f9;
   --foreground: #0f172a;
+}
+
+/* ─── App Shell : full-height desktop, no page scroll ─── */
+html, body {
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -12,26 +18,46 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom Scrollbar for crisp UI */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ─── Scrollbars ─── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* ─── Sur l'écran : masquer les zones d'impression ─── */
+/* Le PrintPortal monte les reçus comme enfants directs du body */
+body > .print-only {
+  display: none;
 }
 
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
+/* ─── Impression ─── */
+@media print {
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Masquer l'app React (div racine générée par Next.js) */
+  body > div:not(.print-only) {
+    display: none !important;
+  }
+
+  /* Afficher les reçus */
+  body > .print-only {
+    display: block !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
 }
 
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
+/* ─── Utilities ─── */
+.tabular-nums { font-variant-numeric: tabular-nums; }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Tabular figures for numbers alignment */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
+*:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
 }
