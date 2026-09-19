@@ -1,42 +1,40 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
 
-const PORT = 3421; // Port fixe pour éviter les conflits
+const PORT = 3421;
 let mainWindow = null;
 let nextServer = null;
 
-// ── Chemin des données persistantes (survit aux mises à jour)
-// Windows : C:\Users\<user>\AppData\Roaming\ResidenceStRaphael
-// Mac     : ~/Library/Application Support/ResidenceStRaphael
+// ── Données persistantes dans AppData (survit aux mises à jour)
 const DATA_DIR = path.join(app.getPath("userData"), "data");
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Exposer le chemin de données à Next.js via variable d'environnement
 process.env.APP_DATA_DIR = DATA_DIR;
 process.env.PORT = String(PORT);
+process.env.NODE_ENV = "production";
 
-function waitForServer(url, retries = 30, delay = 1000) {
+// ── Attendre que le serveur réponde
+function waitForServer(url, retries = 60, delay = 1000) {
   return new Promise((resolve, reject) => {
     const attempt = (n) => {
-      http
-        .get(url, (res) => {
-          if (res.statusCode < 500) resolve();
-          else setTimeout(() => attempt(n - 1), delay);
-        })
-        .on("error", () => {
-          if (n <= 0) reject(new Error("Serveur non disponible"));
-          else setTimeout(() => attempt(n - 1), delay);
-        });
+      http.get(url, (res) => {
+        if (res.statusCode < 500) resolve();
+        else setTimeout(() => attempt(n - 1), delay);
+      }).on("error", () => {
+        if (n <= 0) reject(new Error("Serveur Next.js non disponible après 60 secondes"));
+        else setTimeout(() => attempt(n - 1), delay);
+      });
     };
     attempt(retries);
   });
 }
 
+// ── Créer la fenêtre principale
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -44,15 +42,13 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 680,
     title: "Résidence St Raphaël — Gestion",
-    icon: path.join(__dirname, "../public/logo.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    show: false, // Attendre que la page soit chargée
+    show: false,
   });
 
-  // Ouvrir les liens externes dans le navigateur système
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
@@ -65,36 +61,54 @@ function createWindow() {
 
   mainWindow.loadURL(`http://localhost:${PORT}`);
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
+  mainWindow.on("closed", () => { mainWindow = null; });
 }
 
+// ── Lancer le serveur Next.js avec le Node.js d'Electron
 function startNextServer() {
-  // En production (app packagée), le build Next.js est dans app.asar
+  // Chemin vers l'app — dans asar.unpacked pour les modules natifs
   const appPath = app.isPackaged
-    ? path.join(process.resourcesPath, "app")
+    ? path.join(process.resourcesPath, "app.asar.unpacked")
     : path.join(__dirname, "..");
 
-  const nextBin = path.join(appPath, "node_modules", ".bin", "next");
-  const nextBinCmd = process.platform === "win32" ? nextBin + ".cmd" : nextBin;
+  // Chemin vers le script next/dist/bin/next (fonctionne dans asar)
+  const nextScript = app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar", "node_modules", "next", "dist", "bin", "next")
+    : path.join(__dirname, "..", "node_modules", "next", "dist", "bin", "next");
 
-  nextServer = spawn(nextBinCmd, ["start", "--port", String(PORT)], {
-    cwd: appPath,
-    env: {
-      ...process.env,
-      NODE_ENV: "production",
-      PORT: String(PORT),
-      APP_DATA_DIR: DATA_DIR,
-    },
-    stdio: "pipe",
-  });
+  // Utiliser le node embarqué d'Electron
+  const nodeBin = process.execPath;
 
-  nextServer.stdout.on("data", (d) => console.log("[Next]", d.toString()));
-  nextServer.stderr.on("data", (d) => console.error("[Next ERR]", d.toString()));
+  nextServer = spawn(
+    nodeBin,
+    [nextScript, "start", "--port", String(PORT)],
+    {
+      cwd: app.isPackaged
+        ? path.join(process.resourcesPath, "app.asar.unpacked")
+        : path.join(__dirname, ".."),
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        PORT: String(PORT),
+        APP_DATA_DIR: DATA_DIR,
+      },
+      stdio: "pipe",
+    }
+  );
+
+  nextServer.stdout.on("data", (d) => console.log("[Next]", d.toString().trim()));
+  nextServer.stderr.on("data", (d) => console.error("[Next ERR]", d.toString().trim()));
 
   nextServer.on("error", (err) => {
-    console.error("Impossible de démarrer Next.js :", err);
+    console.error("Erreur démarrage Next.js:", err);
+    dialog.showErrorBox(
+      "Erreur de démarrage",
+      `Impossible de démarrer le serveur:\n${err.message}`
+    );
+  });
+
+  nextServer.on("exit", (code) => {
+    console.log("[Next] Processus terminé avec code:", code);
   });
 }
 
@@ -105,13 +119,17 @@ app.whenReady().then(async () => {
     await waitForServer(`http://localhost:${PORT}`);
     createWindow();
   } catch (err) {
-    console.error("Timeout serveur :", err);
+    console.error("Timeout:", err.message);
+    dialog.showErrorBox(
+      "Timeout de démarrage",
+      "Le serveur n'a pas démarré dans les 60 secondes.\nRelancez l'application."
+    );
     app.quit();
   }
 });
 
 app.on("window-all-closed", () => {
-  if (nextServer) nextServer.kill();
+  if (nextServer) { nextServer.kill(); nextServer = null; }
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -120,5 +138,5 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  if (nextServer) nextServer.kill();
+  if (nextServer) { nextServer.kill(); nextServer = null; }
 });
