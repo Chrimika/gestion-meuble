@@ -33,11 +33,13 @@
     ],
     "asar": true,
     "asarUnpack": [
+      "electron/**/*",
       "node_modules/better-sqlite3/**/*",
       "node_modules/@mapbox/**/*",
       "node_modules/next/**/*",
       "node_modules/react/**/*",
-      "node_modules/react-dom/**/*"
+      "node_modules/react-dom/**/*",
+      ".next/**/*"
     ],
     "extraResources": [],
     "win": {

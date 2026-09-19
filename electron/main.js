@@ -2,39 +2,17 @@ const { app, BrowserWindow, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
-const http = require("http");
 
 const PORT = 3421;
 let mainWindow = null;
-let nextServer = null;
+let serverProcess = null;
 
-// ── Données persistantes dans AppData (survit aux mises à jour)
+// ── Données persistantes dans AppData
 const DATA_DIR = path.join(app.getPath("userData"), "data");
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-process.env.APP_DATA_DIR = DATA_DIR;
-process.env.PORT = String(PORT);
-process.env.NODE_ENV = "production";
-
-// ── Attendre que le serveur réponde
-function waitForServer(url, retries = 60, delay = 1000) {
-  return new Promise((resolve, reject) => {
-    const attempt = (n) => {
-      http.get(url, (res) => {
-        if (res.statusCode < 500) resolve();
-        else setTimeout(() => attempt(n - 1), delay);
-      }).on("error", () => {
-        if (n <= 0) reject(new Error("Serveur Next.js non disponible après 60 secondes"));
-        else setTimeout(() => attempt(n - 1), delay);
-      });
-    };
-    attempt(retries);
-  });
-}
-
-// ── Créer la fenêtre principale
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -59,77 +37,100 @@ function createWindow() {
     mainWindow.maximize();
   });
 
-  mainWindow.loadURL(`http://localhost:${PORT}`);
-
+  mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
   mainWindow.on("closed", () => { mainWindow = null; });
 }
 
-// ── Lancer le serveur Next.js avec le Node.js d'Electron
-function startNextServer() {
-  // Chemin vers l'app — dans asar.unpacked pour les modules natifs
-  const appPath = app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar.unpacked")
-    : path.join(__dirname, "..");
+function startServer() {
+  return new Promise((resolve, reject) => {
+    const isDev = !app.isPackaged;
 
-  // Chemin vers le script next/dist/bin/next (fonctionne dans asar)
-  const nextScript = app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar", "node_modules", "next", "dist", "bin", "next")
-    : path.join(__dirname, "..", "node_modules", "next", "dist", "bin", "next");
+    // Chemin vers le script serveur
+    const serverScript = isDev
+      ? path.join(__dirname, "server.js")
+      : path.join(process.resourcesPath, "app.asar.unpacked", "electron", "server.js");
 
-  // Utiliser le node embarqué d'Electron
-  const nodeBin = process.execPath;
+    // Node.js d'Electron pour exécuter le serveur
+    const nodePath = process.execPath;
 
-  nextServer = spawn(
-    nodeBin,
-    [nextScript, "start", "--port", String(PORT)],
-    {
-      cwd: app.isPackaged
-        ? path.join(process.resourcesPath, "app.asar.unpacked")
-        : path.join(__dirname, ".."),
-      env: {
-        ...process.env,
-        NODE_ENV: "production",
-        PORT: String(PORT),
-        APP_DATA_DIR: DATA_DIR,
-      },
-      stdio: "pipe",
-    }
-  );
+    const env = {
+      ...process.env,
+      NODE_ENV: "production",
+      PORT: String(PORT),
+      APP_DATA_DIR: DATA_DIR,
+      ELECTRON_IS_PACKAGED: app.isPackaged ? "1" : "0",
+    };
 
-  nextServer.stdout.on("data", (d) => console.log("[Next]", d.toString().trim()));
-  nextServer.stderr.on("data", (d) => console.error("[Next ERR]", d.toString().trim()));
+    serverProcess = spawn(nodePath, [serverScript], {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-  nextServer.on("error", (err) => {
-    console.error("Erreur démarrage Next.js:", err);
-    dialog.showErrorBox(
-      "Erreur de démarrage",
-      `Impossible de démarrer le serveur:\n${err.message}`
-    );
-  });
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        reject(new Error("Timeout: serveur non démarré en 90 secondes"));
+      }
+    }, 90000);
 
-  nextServer.on("exit", (code) => {
-    console.log("[Next] Processus terminé avec code:", code);
+    serverProcess.stdout.on("data", (data) => {
+      const msg = data.toString();
+      console.log("[Server]", msg.trim());
+
+      // Attendre le signal READY
+      if (msg.includes("READY:") && !resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+
+    serverProcess.stderr.on("data", (data) => {
+      const msg = data.toString();
+      console.error("[Server ERR]", msg.trim());
+
+      if (msg.includes("SERVER_ERROR:") && !resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        reject(new Error(msg));
+      }
+    });
+
+    serverProcess.on("error", (err) => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        reject(err);
+      }
+    });
+
+    serverProcess.on("exit", (code) => {
+      console.log("[Server] Exited with code:", code);
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        reject(new Error(`Serveur terminé avec code ${code}`));
+      }
+    });
   });
 }
 
 app.whenReady().then(async () => {
-  startNextServer();
-
   try {
-    await waitForServer(`http://localhost:${PORT}`);
+    await startServer();
     createWindow();
   } catch (err) {
-    console.error("Timeout:", err.message);
+    console.error("Erreur démarrage:", err.message);
     dialog.showErrorBox(
-      "Timeout de démarrage",
-      "Le serveur n'a pas démarré dans les 60 secondes.\nRelancez l'application."
+      "Erreur de démarrage",
+      `Impossible de démarrer l'application:\n\n${err.message}\n\nVeuillez contacter le support.`
     );
     app.quit();
   }
 });
 
 app.on("window-all-closed", () => {
-  if (nextServer) { nextServer.kill(); nextServer = null; }
+  if (serverProcess) { serverProcess.kill(); serverProcess = null; }
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -138,5 +139,5 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  if (nextServer) { nextServer.kill(); nextServer = null; }
+  if (serverProcess) { serverProcess.kill(); serverProcess = null; }
 });
