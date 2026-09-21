@@ -15,6 +15,79 @@ import { TransactionDetailModal } from "@/components/TransactionDetailModal";
 import { PrintReceiptModal } from "@/components/PrintReceiptModal";
 import { BulkPrintModal } from "@/components/BulkPrintModal";
 
+// ── Détection du contexte Electron
+declare global {
+  interface Window {
+    electronAPI?: {
+      isElectron: boolean;
+      getTransactions: () => Promise<Transaction[]>;
+      saveTransaction: (tx: any) => Promise<Transaction[]>;
+      deleteTransaction: (id: string) => Promise<Transaction[]>;
+      resetTransactions: () => Promise<Transaction[]>;
+      getCategories: () => Promise<CategoryItem[]>;
+      addCategory: (name: string) => Promise<CategoryItem[]>;
+      deleteCategory: (id: string) => Promise<CategoryItem[]>;
+    };
+  }
+}
+
+const isElectron = () =>
+  typeof window !== "undefined" && Boolean(window.electronAPI?.isElectron);
+
+// ── Couche d'abstraction : IPC Electron OU fetch HTTP selon le contexte
+const api = {
+  async getTransactions(): Promise<Transaction[]> {
+    if (isElectron()) return window.electronAPI!.getTransactions();
+    const res = await fetch("/api/transactions");
+    return res.json();
+  },
+  async saveTransaction(tx: any): Promise<Transaction[]> {
+    if (isElectron()) return window.electronAPI!.saveTransaction(tx);
+    const res = await fetch("/api/transactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tx),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+    return res.json();
+  },
+  async deleteTransaction(id: string): Promise<Transaction[]> {
+    if (isElectron()) return window.electronAPI!.deleteTransaction(id);
+    const res = await fetch(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    return res.json();
+  },
+  async resetTransactions(): Promise<Transaction[]> {
+    if (isElectron()) return window.electronAPI!.resetTransactions();
+    const res = await fetch("/api/transactions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset" }),
+    });
+    return res.json();
+  },
+  async getCategories(): Promise<CategoryItem[]> {
+    if (isElectron()) return window.electronAPI!.getCategories();
+    const res = await fetch("/api/categories");
+    return res.json();
+  },
+  async addCategory(name: string): Promise<CategoryItem[]> {
+    if (isElectron()) return window.electronAPI!.addCategory(name);
+    const res = await fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+    return res.json();
+  },
+  async deleteCategory(id: string): Promise<CategoryItem[]> {
+    if (isElectron()) return window.electronAPI!.deleteCategory(id);
+    const res = await fetch(`/api/categories?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+    return res.json();
+  },
+};
+
 export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -22,32 +95,30 @@ export default function Home() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
-  // ── Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [bookingUnit, setBookingUnit] = useState<any>(undefined);
   const [installmentPreFill, setInstallmentPreFill] = useState<InstallmentPreFill | null>(null);
 
-  // ── Detail + print modal states
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [printTransaction, setPrintTransaction] = useState<Transaction | null>(null);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
   const [isBulkPrintOpen, setIsBulkPrintOpen] = useState(false);
 
-  // ── Load data on mount
+  // ── Chargement initial
   useEffect(() => {
     async function loadData() {
       try {
-        const [txRes, catRes] = await Promise.all([
-          fetch("/api/transactions"),
-          fetch("/api/categories"),
+        const [txs, cats] = await Promise.all([
+          api.getTransactions(),
+          api.getCategories(),
         ]);
-        if (txRes.ok) setTransactions(await txRes.json());
-        if (catRes.ok) setCategories(await catRes.json());
+        setTransactions(txs);
+        setCategories(cats);
       } catch (err) {
-        console.error("Erreur chargement SQLite:", err);
+        console.error("Erreur chargement:", err);
       } finally {
         setIsLoaded(true);
       }
@@ -58,7 +129,7 @@ export default function Home() {
     if (saved) setTheme(saved);
   }, []);
 
-  // ── Apply theme
+  // ── Thème
   useEffect(() => {
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
@@ -74,32 +145,20 @@ export default function Home() {
 
   const kpi = getSummaryKPI(transactions);
 
-  // ── Handlers ──────────────────────────────────────
-
+  // ── Handlers
   const handleSaveTransaction = async (txData: Partial<Transaction>) => {
     try {
-      const res = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(txData),
-      });
-      if (res.ok) {
-        setTransactions(await res.json());
-      } else {
-        const err = await res.json();
-        alert(`Erreur : ${err.error || "Impossible d'enregistrer l'opération"}`);
-      }
+      const updated = await api.saveTransaction(txData);
+      setTransactions(updated);
     } catch (err: any) {
-      console.error("Erreur enregistrement:", err);
-      alert("Erreur de communication avec la base de données.");
+      alert(`Erreur : ${err.message || "Impossible d'enregistrer l'opération"}`);
     }
   };
 
   const handleDeleteTransaction = async (id: string) => {
     if (!confirm("Supprimer cette ligne du journal de caisse ?")) return;
     try {
-      const res = await fetch(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (res.ok) setTransactions(await res.json());
+      setTransactions(await api.deleteTransaction(id));
     } catch (err) {
       console.error("Erreur suppression:", err);
     }
@@ -108,39 +167,28 @@ export default function Home() {
   const handleResetData = async () => {
     if (!confirm("Réinitialiser la base de données avec les données d'origine ?")) return;
     try {
-      const res = await fetch("/api/transactions", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reset" }),
-      });
-      if (res.ok) setTransactions(await res.json());
+      setTransactions(await api.resetTransactions());
     } catch (err) {
       console.error("Erreur réinitialisation:", err);
     }
   };
 
   const handleAddCategory = async (name: string) => {
-    const res = await fetch("/api/categories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (res.ok) {
-      const catRes = await fetch("/api/categories");
-      if (catRes.ok) setCategories(await catRes.json());
+    const updated = await api.addCategory(name);
+    // addCategory retourne la liste complète en Electron, ou l'item seul en HTTP
+    if (Array.isArray(updated)) {
+      setCategories(updated as CategoryItem[]);
     } else {
-      const err = await res.json();
-      throw new Error(err.error || "Impossible d'ajouter la catégorie.");
+      setCategories(await api.getCategories());
     }
   };
 
   const handleDeleteCategory = async (id: string) => {
-    const res = await fetch(`/api/categories?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (res.ok) {
-      setCategories(await res.json());
+    const updated = await api.deleteCategory(id);
+    if (Array.isArray(updated)) {
+      setCategories(updated as CategoryItem[]);
     } else {
-      const err = await res.json();
-      throw new Error(err.error || "Impossible de supprimer la catégorie.");
+      setCategories(await api.getCategories());
     }
   };
 
@@ -159,10 +207,9 @@ export default function Home() {
   const handlePrint = () => setIsBulkPrintOpen(true);
 
   const handleCompleteInstallment = (tx: Transaction) => {
-    const prefill = parseInstallmentFromTx(tx);
     setEditingTransaction(null);
     setBookingUnit(undefined);
-    setInstallmentPreFill(prefill);
+    setInstallmentPreFill(parseInstallmentFromTx(tx));
     setIsModalOpen(true);
   };
 
@@ -177,9 +224,8 @@ export default function Home() {
     setEditingTransaction(tx);
     setBookingUnit(undefined);
     setInstallmentPreFill(null);
-    setIsModalOpen(true);
-    // close detail if open
     setIsDetailOpen(false);
+    setIsModalOpen(true);
   };
 
   const openViewDetail = (tx: Transaction) => {
@@ -189,11 +235,10 @@ export default function Home() {
 
   const openPrintReceipt = (tx: Transaction) => {
     setPrintTransaction(tx);
-    setIsPrintOpen(true);
     setIsDetailOpen(false);
+    setIsPrintOpen(true);
   };
 
-  // ── Loading screen
   if (!isLoaded) {
     return (
       <div className="h-full flex items-center justify-center" style={{ backgroundColor: "#f1f5f9" }}>
@@ -215,23 +260,19 @@ export default function Home() {
         color: isDark ? "#f1f5f9" : "#0f172a",
       }}
     >
-      {/* ── Top Navbar (fixed height 60px) ── */}
       <Navbar
         soldeActuel={kpi.soldeActuel}
         totalRecettes={kpi.totalRecettes}
         totalDepenses={kpi.totalDepenses}
         theme={theme}
-        onToggleTheme={() => setTheme((p) => (p === "dark" ? "light" : "dark"))}
+        onToggleTheme={() => setTheme(p => p === "dark" ? "light" : "dark")}
         onOpenNewTransaction={openNewTransaction}
         onExportCSV={handleExportCSV}
         onResetData={handleResetData}
         onPrint={handlePrint}
       />
 
-      {/* ── Body (fills remaining height, no overflow) ── */}
       <div className="flex-1 flex overflow-hidden">
-
-        {/* ── Sidebar (fixed width, full height) ── */}
         <Sidebar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -240,10 +281,7 @@ export default function Home() {
           onOpenCategoryManager={() => setIsCategoryModalOpen(true)}
         />
 
-        {/* ── Main content area ── */}
         <main className="flex-1 overflow-hidden flex flex-col">
-
-          {/* Ledger: h-full flex col (scroll inside table) */}
           {activeTab === "ledger" && (
             <LedgerTable
               transactions={transactions}
@@ -257,8 +295,6 @@ export default function Home() {
               onPrintReceipt={openPrintReceipt}
             />
           )}
-
-          {/* Other tabs: overflow-y-auto with padding */}
           {activeTab === "dashboard" && (
             <div className="flex-1 overflow-y-auto p-5">
               <DashboardOverview
@@ -269,7 +305,6 @@ export default function Home() {
               />
             </div>
           )}
-
           {activeTab === "units" && (
             <div className="flex-1 overflow-y-auto p-5">
               <UnitManagement
@@ -289,7 +324,6 @@ export default function Home() {
               />
             </div>
           )}
-
           {activeTab === "analytics" && (
             <div className="flex-1 overflow-y-auto p-5">
               <AnalyticsView
@@ -302,7 +336,6 @@ export default function Home() {
         </main>
       </div>
 
-      {/* ── Modals ── */}
       <TransactionModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -314,7 +347,6 @@ export default function Home() {
         onOpenCategoryManager={() => { setIsModalOpen(false); setIsCategoryModalOpen(true); }}
         defaultUnit={bookingUnit}
       />
-
       <CategoryManagementModal
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
@@ -323,7 +355,6 @@ export default function Home() {
         onDeleteCategory={handleDeleteCategory}
         theme={theme}
       />
-
       <TransactionDetailModal
         transaction={detailTransaction}
         isOpen={isDetailOpen}
@@ -334,14 +365,12 @@ export default function Home() {
         onPrintReceipt={openPrintReceipt}
         theme={theme}
       />
-
       <PrintReceiptModal
         transaction={printTransaction}
         isOpen={isPrintOpen}
         onClose={() => setIsPrintOpen(false)}
         theme={theme}
       />
-
       <BulkPrintModal
         transactions={transactions}
         isOpen={isBulkPrintOpen}

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+// Force dynamic — exclut cette route du static export (Electron utilise IPC à la place)
+export const dynamic = "force-dynamic";
 import { 
   getTransactionsDB, 
   saveTransactionDB, 

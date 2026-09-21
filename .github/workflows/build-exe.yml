@@ -21,17 +21,22 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Next.js
-        run: npm run build
-        env:
-          NODE_ENV: production
+      - name: Build .exe (static export + electron-builder)
+        run: node scripts/build-electron.js win
 
-      - name: Build Windows .exe
-        run: npx electron-builder --win --x64 --publish never
-
-      - name: Upload .exe
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ResidenceStRaphael-Windows-Setup
           path: dist-electron/*.exe
-          retention-days: 30
+          retention-days: 90
+
+      - name: Create public Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Résidence St Raphaël v1.0.${{ github.run_number }}"
+          body: "Logiciel de gestion financière — Résidence St Raphaël, Yaoundé"
+          files: dist-electron/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

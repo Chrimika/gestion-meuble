@@ -11,8 +11,9 @@
     "start": "next start",
     "lint": "eslint",
     "electron:dev": "concurrently \"next dev -p 3421\" \"wait-on http://localhost:3421 && electron .\"",
-    "electron:build": "next build && electron-builder --win --x64",
-    "electron:build:linux": "next build && electron-builder --linux",
+    "electron:build:win": "node scripts/build-electron.js",
+    "electron:build": "node scripts/build-electron.js",
+    "electron:build:linux": "node scripts/build-electron.js linux",
     "electron:build:mac": "next build && electron-builder --mac"
   },
   "build": {
@@ -25,28 +26,26 @@
     },
     "files": [
       "electron/**/*",
-      ".next/**/*",
+      "out/**/*",
       "public/**/*",
       "node_modules/**/*",
-      "package.json",
-      "next.config.ts"
+      "package.json"
     ],
     "asar": true,
     "asarUnpack": [
       "electron/**/*",
+      "out/**/*",
       "node_modules/better-sqlite3/**/*",
-      "node_modules/@mapbox/**/*",
-      "node_modules/next/**/*",
-      "node_modules/react/**/*",
-      "node_modules/react-dom/**/*",
-      ".next/**/*"
+      "node_modules/@mapbox/**/*"
     ],
     "extraResources": [],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/logo.ico"
@@ -62,12 +61,17 @@
       "shortcutName": "Résidence St Raphaël"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "public/logo.png",
       "category": "Office"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "public/logo.png",
       "category": "public.app-category.business"
     }
@@ -86,6 +90,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "10.0.5",
+    "cross-env": "^7.0.3",
     "electron": "44.4.2",
     "electron-builder": "26.15.3",
     "eslint": "^9",
