@@ -8,7 +8,7 @@ import { DateInput } from "@/components/DateInput";
 interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (txData: Partial<Transaction>) => void;
+  onSave: (txData: Partial<Transaction>) => Promise<void>;
   editingTransaction?: Transaction | null;
   installmentPreFill?: InstallmentPreFill | null;
   theme: "light" | "dark";
@@ -61,6 +61,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [category, setCategory] = useState<Category>("Fournitures & Linge");
   const [entryType, setEntryType] = useState<"RECETTE" | "DEPENSE">("DEPENSE");
   const [amount, setAmount] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Reservation
   const [resUnit, setResUnit] = useState<PropertyUnit>("Appartement 1");
@@ -111,6 +112,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCategory("Loyers & Réservations");
       setResServices([]);
     } else {
+      setMode("STANDARD");
       setDate(new Date().toISOString().split("T")[0]);
       setPieceNo(""); setLibelle("");
       setUnit(defaultUnit || "Général / Communs");
@@ -156,10 +158,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     const loyer = parseFloat(amount) || 0;
     const totalMontant = mode === "RESERVATION" ? loyer + servicesTotalAmount : loyer;
+    if (totalMontant <= 0) {
+      alert("Saisissez un montant supérieur à zéro.");
+      return;
+    }
     const payload: Partial<Transaction> = {
       date, pieceNo: pieceNo.trim() || "-", libelle: libelle.trim(), unit, category,
       recettes: entryType === "RECETTE" ? totalMontant : 0,
@@ -176,8 +183,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       payload.resServices = resServices.filter(s => s.label.trim() && s.unitPrice > 0);
     }
     if (editingTransaction?.id) payload.id = editingTransaction.id;
-    onSave(payload);
-    onClose();
+    setIsSaving(true);
+    try {
+      await onSave(payload);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Services CRUD
@@ -529,9 +541,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 isDark ? "border-slate-700 text-slate-400 hover:bg-slate-800" : "border-slate-200 text-slate-600 hover:bg-slate-100"}`}>
               Annuler
             </button>
-            <button type="submit" onClick={handleSubmit}
-              className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 text-xs font-black rounded-xl shadow transition-all">
-              {editingTransaction ? "Enregistrer les modifications" : "Enregistrer l'opération"}
+            <button type="submit" disabled={isSaving} className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-black shadow-md shadow-emerald-600/20 transition-all">
+              {isSaving ? "Enregistrement…" : editingTransaction ? "Enregistrer les modifications" : "Enregistrer l'opération"}
             </button>
           </div>
         </div>

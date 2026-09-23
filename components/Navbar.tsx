@@ -54,7 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* ── Logo + Nom résidence ── */}
         <div className="flex items-center gap-3 shrink-0">
           <img
-            src="/logo.jpeg"
+            src="/logo.ico"
             alt="Résidence St Raphaël"
             className="rounded-xl object-cover shadow-md"
             style={{ width: 44, height: 44 }}
