@@ -34,6 +34,25 @@ declare global {
 const isElectron = () =>
   typeof window !== "undefined" && Boolean(window.electronAPI?.isElectron);
 
+const DEFAULT_CATEGORIES: CategoryItem[] = [
+  "Loyers & Réservations",
+  "Entretien & Travaux",
+  "Fournitures & Linge",
+  "Salaires & Personnel",
+  "Charges & Énergie",
+  "Transport & Com",
+  "Autres",
+].map((name, index) => ({ id: `default-${index}`, name, isCustom: false }));
+
+function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs = 15000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
+}
+
 // ── Couche d'abstraction : IPC Electron OU fetch HTTP selon le contexte
 const api = {
   async getTransactions(): Promise<Transaction[]> {
@@ -90,9 +109,8 @@ const api = {
 
 export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [activeTab, setActiveTab] = useState<ActiveTab>("ledger");
-  const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -113,21 +131,18 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const timeout = new Promise<never>((_, reject) => {
-          window.setTimeout(() => reject(new Error("Le chargement a dépassé 15 secondes.")), 15000);
-        });
-        const [txs, cats] = await Promise.race([
+        const [txs, cats] = await withTimeout(
           Promise.all([api.getTransactions(), api.getCategories()]),
-          timeout,
-        ]);
+          "Le chargement a dépassé 15 secondes.",
+        );
         setTransactions(txs);
         setCategories(cats);
         setLoadError(null);
       } catch (err) {
         console.error("Erreur chargement:", err);
         setLoadError(err instanceof Error ? err.message : "Impossible de charger les données de la caisse.");
-      } finally {
-        setIsLoaded(true);
+        setTransactions([]);
+        setCategories(DEFAULT_CATEGORIES);
       }
     }
     loadData();
@@ -155,7 +170,10 @@ export default function Home() {
   // ── Handlers
   const handleSaveTransaction = async (txData: Partial<Transaction>) => {
     try {
-      const updated = await api.saveTransaction(txData);
+      const updated = await withTimeout(
+        api.saveTransaction(txData),
+        "L'enregistrement a dépassé 15 secondes. Vérifiez le module SQLite.",
+      );
       setTransactions(updated);
     } catch (err: any) {
       alert(`Erreur : ${err.message || "Impossible d'enregistrer l'opération"}`);
@@ -165,7 +183,10 @@ export default function Home() {
   const handleDeleteTransaction = async (id: string) => {
     if (!confirm("Supprimer cette ligne du journal de caisse ?")) return;
     try {
-      setTransactions(await api.deleteTransaction(id));
+      setTransactions(await withTimeout(
+        api.deleteTransaction(id),
+        "La suppression a dépassé 15 secondes. Vérifiez le module SQLite.",
+      ));
     } catch (err) {
       console.error("Erreur suppression:", err);
     }
@@ -174,7 +195,10 @@ export default function Home() {
   const handleResetData = async () => {
     if (!confirm("Réinitialiser la base de données avec les données d'origine ?")) return;
     try {
-      setTransactions(await api.resetTransactions());
+      setTransactions(await withTimeout(
+        api.resetTransactions(),
+        "La réinitialisation a dépassé 15 secondes. Vérifiez le module SQLite.",
+      ));
     } catch (err) {
       console.error("Erreur réinitialisation:", err);
     }
@@ -246,39 +270,6 @@ export default function Home() {
     setIsPrintOpen(true);
   };
 
-  if (!isLoaded) {
-    return (
-      <div className="h-full flex items-center justify-center" style={{ backgroundColor: "#f1f5f9" }}>
-        <div className="flex items-center gap-3 text-slate-500">
-          <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm font-medium">Chargement du journal de caisse…</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="h-full flex items-center justify-center p-6" style={{ backgroundColor: "#f1f5f9" }}>
-        <div className="max-w-md rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
-          <h1 className="text-base font-semibold text-red-700">Chargement impossible</h1>
-          <p className="mt-2 text-sm text-slate-600">{loadError}</p>
-          <p className="mt-2 text-xs text-slate-500">Vérifiez que la base SQLite et le module Electron sont correctement installés.</p>
-          <button
-            type="button"
-            onClick={() => {
-              setIsLoaded(false);
-              setLoadAttempt((attempt) => attempt + 1);
-            }}
-            className="mt-5 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
-          >
-            Réessayer
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const isDark = theme === "dark";
 
   return (
@@ -289,6 +280,21 @@ export default function Home() {
         color: isDark ? "#f1f5f9" : "#0f172a",
       }}
     >
+      {loadError && (
+        <div className="flex items-center justify-between gap-3 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+          <span>Journal ouvert vide : {loadError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setLoadError(null);
+              setLoadAttempt((attempt) => attempt + 1);
+            }}
+            className="font-semibold underline"
+          >
+            Réessayer le chargement
+          </button>
+        </div>
+      )}
       <Navbar
         soldeActuel={kpi.soldeActuel}
         totalRecettes={kpi.totalRecettes}
