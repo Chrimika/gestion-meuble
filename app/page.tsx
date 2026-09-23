@@ -176,7 +176,9 @@ export default function Home() {
       );
       setTransactions(updated);
     } catch (err: any) {
-      alert(`Erreur : ${err.message || "Impossible d'enregistrer l'opération"}`);
+      const message = err instanceof Error ? err.message : "Impossible d'enregistrer l'opération";
+      alert(`Erreur : ${message}`);
+      throw err;
     }
   };
 

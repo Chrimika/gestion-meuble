@@ -257,7 +257,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         )}
 
         {/* Form body — 2 columns when reservation mode */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+        <form id="transaction-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className={mode === "RESERVATION" && !editingTransaction ? "grid grid-cols-2 gap-0 h-full" : ""}>
 
             {/* ── LEFT col (reservation wizard) ── */}
@@ -541,7 +541,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 isDark ? "border-slate-700 text-slate-400 hover:bg-slate-800" : "border-slate-200 text-slate-600 hover:bg-slate-100"}`}>
               Annuler
             </button>
-            <button type="submit" disabled={isSaving} className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-black shadow-md shadow-emerald-600/20 transition-all">
+            <button type="submit" form="transaction-form" disabled={isSaving} className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-black shadow-md shadow-emerald-600/20 transition-all">
               {isSaving ? "Enregistrement…" : editingTransaction ? "Enregistrer les modifications" : "Enregistrer l'opération"}
             </button>
           </div>
