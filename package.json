@@ -14,7 +14,7 @@
     "electron:build:win": "node scripts/build-electron.js",
     "electron:build": "node scripts/build-electron.js",
     "electron:build:linux": "node scripts/build-electron.js linux",
-    "electron:build:mac": "next build && electron-builder --mac"
+    "electron:build:mac": "cross-env BUILD_TARGET=electron next build && electron-builder --mac"
   },
   "build": {
     "appId": "com.saintraphael.gestion",

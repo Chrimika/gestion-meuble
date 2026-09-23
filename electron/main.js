@@ -34,12 +34,17 @@ function createWindow() {
     mainWindow.maximize();
   });
 
-  // Charger les fichiers statiques générés par Next.js
-  const indexPath = app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar.unpacked", "out", "index.html")
-    : path.join(__dirname, "..", "out", "index.html");
+  // En production, out/ est dans app.asar et app.getAppPath() sait le lire.
+  // En développement, electron:dev utilise directement le serveur Next.
+  if (app.isPackaged) {
+    mainWindow.loadFile(path.join(app.getAppPath(), "out", "index.html"));
+  } else {
+    mainWindow.loadURL("http://localhost:3421");
+  }
 
-  mainWindow.loadFile(indexPath);
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+    console.error(`Chargement de l'interface impossible (${errorCode}): ${errorDescription}`);
+  });
 
   mainWindow.on("closed", () => { mainWindow = null; });
 }

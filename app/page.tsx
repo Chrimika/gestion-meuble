@@ -93,6 +93,8 @@ export default function Home() {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>("ledger");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -111,14 +113,19 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [txs, cats] = await Promise.all([
-          api.getTransactions(),
-          api.getCategories(),
+        const timeout = new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error("Le chargement a dépassé 15 secondes.")), 15000);
+        });
+        const [txs, cats] = await Promise.race([
+          Promise.all([api.getTransactions(), api.getCategories()]),
+          timeout,
         ]);
         setTransactions(txs);
         setCategories(cats);
+        setLoadError(null);
       } catch (err) {
         console.error("Erreur chargement:", err);
+        setLoadError(err instanceof Error ? err.message : "Impossible de charger les données de la caisse.");
       } finally {
         setIsLoaded(true);
       }
@@ -127,7 +134,7 @@ export default function Home() {
 
     const saved = localStorage.getItem("immo_theme") as "light" | "dark" | null;
     if (saved) setTheme(saved);
-  }, []);
+  }, [loadAttempt]);
 
   // ── Thème
   useEffect(() => {
@@ -245,6 +252,28 @@ export default function Home() {
         <div className="flex items-center gap-3 text-slate-500">
           <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-sm font-medium">Chargement du journal de caisse…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="h-full flex items-center justify-center p-6" style={{ backgroundColor: "#f1f5f9" }}>
+        <div className="max-w-md rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-base font-semibold text-red-700">Chargement impossible</h1>
+          <p className="mt-2 text-sm text-slate-600">{loadError}</p>
+          <p className="mt-2 text-xs text-slate-500">Vérifiez que la base SQLite et le module Electron sont correctement installés.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setIsLoaded(false);
+              setLoadAttempt((attempt) => attempt + 1);
+            }}
+            className="mt-5 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
+          >
+            Réessayer
+          </button>
         </div>
       </div>
     );
